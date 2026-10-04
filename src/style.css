@@ -31,6 +31,7 @@
   --toast-bg: rgba(34, 48, 61, .92);
   --toast-ink: #FEF9EF;
   --brand: #22303D;
+  --black-key: #2E3640;
   --font-display: "General Sans", ui-sans-serif, system-ui, sans-serif;
   --font-label: "Supreme", ui-sans-serif, system-ui, sans-serif;
   --safe-t: env(safe-area-inset-top, 0px);
@@ -63,6 +64,7 @@ html.soft {
   --toast-bg: rgba(228, 223, 212, .95);
   --toast-ink: #303135;
   --brand: #E4DFD4;
+  --black-key: #26272A;
 }
 
 * { box-sizing: border-box; }
@@ -201,27 +203,26 @@ kbd { font: 600 11px var(--font-label); padding: 1px 5px; border-radius: 4px; bo
 .tiles { display: grid; grid-template-columns: repeat(auto-fill, minmax(96px, 1fr)); grid-auto-rows: minmax(54px, auto); gap: 8px; overflow-y: auto; padding: 2px; align-content: start; min-height: 0; }
 .tiles.small { grid-template-columns: repeat(auto-fill, minmax(70px, 1fr)); gap: 6px; flex: 1; }
 #loop-grid { grid-template-columns: repeat(4, 1fr); grid-auto-rows: minmax(84px, 1fr); flex: 1; align-content: stretch; }
-#loop-grid .tile { justify-content: center; }
+#loop-grid .tile { justify-content: center; font-size: 15px; }
 #loop-grid .tile .emo { font-size: 36px; }
 .tile {
   position: relative; border-radius: 12px; padding: 10px 6px 8px; display: flex; flex-direction: column; align-items: center; gap: 4px;
   background: var(--field); border: 1px solid var(--edge); font: 600 13px var(--font-display); touch-action: none;
   transition: transform .1s ease;
 }
-.tile::before { content: ''; position: absolute; left: 0; right: 0; top: 0; height: 5px; border-radius: 12px 12px 0 0; background: var(--c); }
+.tile::before { content: ''; position: absolute; left: 12px; right: 12px; top: 0; height: 3px; border-radius: 0 0 3px 3px; background: var(--c); }
 .tile .emo { font-size: 30px; }
-.tiles.small .tile { padding: 8px 3px 5px; font-size: 11.5px; gap: 2px; white-space: nowrap; overflow: hidden; }
+.tiles.small .tile { padding: 12px 4px 10px; justify-content: center; font-size: 12px; gap: 2px; white-space: nowrap; overflow: hidden; }
 .tiles.small .tile .emo { font-size: 23px; }
 .tile:hover { background: var(--hover); }
 .tile:active, .tile.hit { transform: scale(.95); }
 .tile.active { background: color-mix(in srgb, var(--c) 30%, var(--field)); border-color: var(--c); }
-.tile.playing .emo { animation: wiggle .5s ease-in-out infinite alternate; }
-@keyframes wiggle { from { transform: rotate(-8deg) scale(1.05); } to { transform: rotate(8deg) scale(1.1); } }
+.tile.playing { background: color-mix(in srgb, var(--c) 30%, var(--field)); border-color: var(--c); }
 .tile small { font: 500 10.5px var(--font-label); color: var(--faint); }
 
 /* ---- Beats --------------------------------------------------------------- */
 .beat-top { display: flex; justify-content: space-between; gap: 8px; flex-wrap: wrap; }
-#grid { display: grid; grid-template-columns: 52px repeat(16, 1fr); gap: 3px; flex: 1; min-height: 0; align-content: center; }
+#grid { display: grid; grid-template-columns: 64px repeat(16, 1fr); gap: 3px; flex: 1; min-height: 0; align-content: center; }
 #grid .name { font: 600 12px var(--font-display); color: var(--muted); display: flex; align-items: center; gap: 5px; cursor: pointer; }
 #grid .name i { width: 8px; height: 8px; border-radius: 50%; background: var(--c); flex: none; }
 #grid .step { height: min(26px, 3.4vh); min-height: 16px; border-radius: 5px; background: var(--lane); border: 1px solid var(--edge); touch-action: none; }
@@ -232,15 +233,42 @@ kbd { font: 600 11px var(--font-label); padding: 1px 5px; border-radius: 4px; bo
 .tempo b { font: 600 12px var(--font-display); color: var(--ink); min-width: 52px; }
 input[type=range] { accent-color: var(--switch-on); width: 120px; }
 
-/* ---- Play ---------------------------------------------------------------- */
-#pads { flex: 1; display: grid; grid-template-columns: repeat(10, 1fr); gap: 6px; min-height: 0; }
-.pad {
-  border-radius: 12px; background: var(--c); position: relative; touch-action: none;
-  box-shadow: inset 0 -6px 0 rgba(0,0,0,.18), var(--shadow); transition: transform .06s, filter .06s;
-  display: flex; align-items: flex-end; justify-content: center; padding-bottom: 8px;
-  font: 600 12px var(--font-display); color: rgba(255,255,255,.85);
+/* ---- Instruments ------------------------------------------------------- */
+#inst-chips { display: flex; flex-direction: column; gap: 5px; }
+.inst-row { display: flex; align-items: center; gap: 8px; }
+.inst-label { width: 46px; flex: none; font: 600 11.5px var(--font-display); color: var(--faint); text-transform: uppercase; letter-spacing: .04em; }
+.chip.kit { margin-left: 2px; }
+.inst-row .chip.kit:first-of-type { margin-left: 10px; }
+#keys { flex: 1; min-height: 70px; position: relative; display: grid; grid-template-columns: repeat(var(--whites), 1fr); gap: 2px; touch-action: none; }
+#keys .k { touch-action: none; }
+#keys .white {
+  border-radius: 0 0 7px 7px; background: var(--field); border: 1px solid var(--edge);
+  display: flex; flex-direction: column; justify-content: flex-end; align-items: center; padding-bottom: 5px; gap: 1px;
+  font: 500 10px var(--font-label); color: var(--faint);
 }
-.pad.hit { transform: translateY(3px); filter: brightness(1.2); box-shadow: inset 0 -2px 0 rgba(0,0,0,.18); }
+#keys .white b { font: 600 10.5px var(--font-display); color: var(--muted); }
+#keys .black {
+  position: absolute; top: 0; height: 60%; width: calc(100% / var(--whites) * .62);
+  left: calc(100% / var(--whites) * var(--at) - 100% / var(--whites) * .31);
+  background: var(--black-key); border-radius: 0 0 5px 5px; z-index: 1;
+}
+#keys .k.down { background: var(--gold); border-color: var(--gold-edge); opacity: 1; }
+#drum-pads { flex: 1; display: grid; grid-template-columns: repeat(5, 1fr); grid-auto-rows: 1fr; gap: 6px; min-height: 0; }
+.dpad {
+  position: relative; border-radius: 10px; background: var(--field); border: 1px solid var(--edge); touch-action: none;
+  display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+  font: 600 13px var(--font-display); transition: transform .05s;
+}
+.dpad::before { content: ''; position: absolute; left: 10px; right: 10px; top: 0; height: 3px; border-radius: 0 0 3px 3px; background: var(--c); }
+.dpad small { font: 500 10px var(--font-label); color: var(--faint); }
+.dpad.down { transform: translateY(1px); background: color-mix(in srgb, var(--c) 35%, var(--field)); }
+.oct { display: flex; align-items: center; gap: 2px; padding: 2px; border-radius: 10px; background: var(--field); border: 1px solid var(--edge); }
+.oct[hidden] { display: none; }
+.oct button { width: 28px; height: 28px; border-radius: 7px; font: 600 16px var(--font-display); }
+.oct button:hover { background: var(--hover); }
+.oct b { font: 600 12.5px var(--font-display); min-width: 26px; text-align: center; }
+#sfx-cats { flex: none; }
+#tab-play .tempo input { width: 90px; }
 
 /* ---- Bring in ------------------------------------------------------------ */
 #drop {
@@ -306,8 +334,8 @@ input[type=range] { accent-color: var(--switch-on); width: 120px; }
 #files-menu button { display: flex; align-items: center; gap: 10px; width: 100%; padding: 8px 10px; border-radius: 11px; text-align: left; font: 600 14px var(--font-display); }
 #files-menu button:hover { background: var(--hover); }
 #files-menu hr { border: 0; border-top: 1px solid var(--rule); margin: 5px 6px; }
-#voice-pop { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; width: 300px; }
-#voice-pop button { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 9px 4px; border-radius: 11px; font: 600 12.5px var(--font-display); }
+#voice-pop { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; width: 260px; }
+#voice-pop button { display: flex; flex-direction: column; align-items: center; gap: 3px; padding: 8px 4px; border-radius: 11px; font: 600 12.5px var(--font-display); }
 #voice-pop button .emo { font-size: 26px; }
 #voice-pop button:hover { background: var(--hover); }
 #voice-pop button.active { background: var(--gold); color: var(--on-gold); }
@@ -341,7 +369,7 @@ input[type=range] { accent-color: var(--switch-on); width: 120px; }
   #timeline { left: calc(10px + var(--safe-l)); right: calc(10px + var(--safe-r)); bottom: calc(10px + var(--safe-b)); }
   #tl-bar { flex-wrap: wrap; }
   #clip-bar { order: 10; flex-basis: 100%; justify-content: flex-start; overflow-x: auto; }
-  #clip-tools > button span:not(.emo) { display: none; }
+  #clip-tools > button span { display: none; }
   #lanes { width: 78px; }
   .lane-head .nm { display: none; }
   #tab-record { flex-direction: column; gap: 8px; }

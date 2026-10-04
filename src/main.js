@@ -1,18 +1,18 @@
 // Krafty Sound: the Sound room.
 //
 // The screen is laid out as Krafty's Animate room: the film top left, the
-// sound box top right (Record, Loops, Beats, Play, Sounds, Bring in), and the
+// sound box top right (Record, Loops, Beats, Instruments, FX, Import), and the
 // timeline under them. Everything you make lands on the timeline as a clip
-// of plain sound, so a voice, a loop, a beat, a tune, a boing and an mp3 are
-// all moved, chopped, looped, faded and made silly the same way.
+// of plain sound, so a voice, a loop, a beat, a played part, an effect and an
+// mp3 are all moved, split, looped and faded the same way.
 //
 // Built to fit and feel quick on a ChB (1366 × 768, touch and pen, 4 GB):
 // sounds are mono, the timeline is only redrawn when something changes (the
 // playhead is drawn over a cached picture), and nothing is downloaded.
 
-import { S, FPS, on, emit, change, commit, snap, undo, redo, canUndo, canRedo, resetHistory, clipById, laneById, selected, clipEnd, laneFor, newId, newProject, frameOf, fitLength, MAX_LANES, addLane } from './state.js';
+import { S, FPS, on, emit, change, commit, snap, undo, redo, canUndo, canRedo, resetHistory, clipById, laneById, selected, clipEnd, laneFor, newId, newProject, frameOf, fitLength, MAX_LANES, addLane, tidyNames } from './state.js';
 import * as A from './audio.js';
-import { INSTRUMENTS, PAD_INSTRUMENTS, PADS, DRUMS, KITS, BEATS, SFX, LOOPS, drum, render, renderLoop, renderBeat, playTune } from './synth.js';
+import { INSTRUMENTS, INSTRUMENT_GROUPS, DRUMS, KITS, BEATS, SFX, LOOPS, drum, render, renderLoop, renderBeat, playTune, tick } from './synth.js';
 import * as TL from './timeline.js';
 import { initViewer, drawFilm } from './viewer.js';
 import { saveLocal, loadLocal, fileBlob, openFile, download } from './store.js';
@@ -32,16 +32,20 @@ const P = {
   soft: prefs.soft ?? true,
   film: prefs.film ?? true,
   count: prefs.count ?? true,
-  inst: INSTRUMENTS[prefs.inst] ? prefs.inst : 'marimba',
+  inst: INSTRUMENTS[prefs.inst] || prefs.inst === 'drums' ? prefs.inst : 'piano',
+  oct: prefs.oct || 0,
+  tone: prefs.tone ?? 1,
+  fx: prefs.fx || 'Hits',
   kit: KITS[prefs.kit] ? prefs.kit : 'studio',
   bpm: prefs.bpm || 110,
-  grid: prefs.grid || gridFrom(BEATS.Stomp),
-  preset: prefs.preset || 'Stomp',
+  grid: prefs.grid || gridFrom(BEATS.Four),
+  preset: prefs.preset || 'Four',
   snap: !!prefs.snap,
   loop: prefs.loop ?? true,
 };
 function savePrefs() { try { localStorage.setItem(PREFS_KEY, JSON.stringify(P)); } catch { /* private window */ } }
 function gridFrom(b) { const g = {}; for (const d of DRUMS) g[d.id] = (b[d.id] || Array(16).fill(false)).slice(); return g; }
+for (const d of DRUMS) if (!P.grid[d.id]) P.grid[d.id] = Array(16).fill(false);
 S.snap = P.snap; S.loop = P.loop;
 
 // ---------------------------------------------------------------------------
@@ -115,11 +119,11 @@ $('#files-menu').addEventListener('click', async (e) => {
   } else if (what === 'open') $('#open-input').click();
   else if (what === 'save') { download(fileBlob(S.project), 'My sounds.ksound'); toast('Saved'); }
   else if (what === 'wav') {
-    if (!S.project.clips.length) { toast('Nothing to save yet: record or drop in a sound'); return; }
-    toast('Mixing it down…', 6000);
+    if (!S.project.clips.length) { toast('Nothing to export yet'); return; }
+    toast('Mixing down…', 6000);
     const buf = await A.mixdown(S.project);
     download(A.wavBlob(buf), 'Krafty sound.wav');
-    toast('Saved as a sound');
+    toast('Exported');
   } else if (what === 'demo') makeDemo();
 });
 $('#open-input').addEventListener('change', async (e) => {
@@ -131,7 +135,7 @@ $('#open-input').addEventListener('change', async (e) => {
     change(() => { S.project = p; });
     S.sel = null; S.playhead = 0; S.view.t0 = 0; S.view.pps = 0;
     toast('Opened ' + f.name.replace(/\.ksound$/, ''));
-  } catch { toast("That isn't a Krafty sound file", 2400); }
+  } catch { toast("Not a Krafty sound file", 2400); }
 });
 
 // ---------------------------------------------------------------------------
@@ -143,6 +147,7 @@ function setTab(t) {
   for (const p of $$('.tab')) p.classList.toggle('active', p.id === 'tab-' + t);
   if (t !== 'beats') stopTry();
   if (t !== 'loops') stopLoopPreview();
+  if (t !== 'play') allNotesOff();
 }
 for (const b of $$('#tabs button')) b.addEventListener('click', () => setTab(b.dataset.tab));
 
@@ -185,7 +190,7 @@ function refreshTransport() {
   $('#tl-play').innerHTML = S.playing && !S.rec
     ? '<svg viewBox="0 0 24 24"><rect x="6" y="5" width="4" height="14" rx="1" fill="currentColor"/><rect x="14" y="5" width="4" height="14" rx="1" fill="currentColor"/></svg>'
     : '<svg viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z"/></svg>';
-  $('#tl-rec').classList.toggle('on', !!S.rec && S.rec.kind === 'voice');
+  $('#tl-rec').classList.toggle('on', !!S.rec);
   $('#rec-big').classList.toggle('on', !!S.rec && S.rec.kind === 'voice');
   $('#tune-rec').classList.toggle('on', !!S.rec && S.rec.kind === 'tune');
   $('#rec-say').textContent = S.rec?.kind === 'voice' ? 'Tap to stop' : counting ? 'Get ready…' : 'Tap to record';
@@ -224,7 +229,7 @@ function countdown() {
     const show = () => {
       cd.textContent = n; cd.hidden = false;
       cd.classList.remove('pop'); void cd.offsetWidth; cd.classList.add('pop');
-      INSTRUMENTS.marimba.play(A.audio(), A.out(), A.ctx.currentTime + 0.01, n === 1 ? 84 : 72, 0.1, 0.5);
+      tick(A.audio(), A.out(), A.ctx.currentTime + 0.01, n === 1);
     };
     show();
     counting = { resolve, timer: setInterval(() => {
@@ -262,10 +267,10 @@ function micTrouble(e) {
   const box = $('#mic-help');
   const name = e?.name || e?.message;
   box.innerHTML = !window.isSecureContext
-    ? 'The microphone only works over https (or on this computer at localhost). You can still <button data-go="bring">bring in a sound</button>.'
+    ? 'The microphone only works over https (or on this computer at localhost). You can still <button data-go="bring">import a sound</button>.'
     : name === 'NotAllowedError' || name === 'SecurityError'
-      ? 'Krafty isn’t allowed to use the microphone. Tap the little icon at the left of the address bar to allow it, or <button data-go="bring">bring in a sound</button> from your phone.'
-      : 'No microphone found. Plug one in, or <button data-go="bring">bring in a sound</button> from your phone instead.';
+      ? 'Krafty isn’t allowed to use the microphone. Tap the icon at the left of the address bar to allow it, or <button data-go="bring">import a sound</button> from your phone.'
+      : 'No microphone found. Plug one in, or <button data-go="bring">import a sound</button> from your phone.';
   box.hidden = false;
   setTab('record');
   toast('No microphone', 1600);
@@ -301,24 +306,24 @@ async function finishVoice(r) {
   // the speakers, and your voice a moment to come back in.
   const late = P.film ? (c.outputLatency || 0) + (c.baseLatency || 0) : 0;
   const d = A.mic.stop(r.when + late);
-  if (d.length < sr * 0.1) { toast('That was very short!'); return; }
+  if (d.length < sr * 0.1) { toast('Too short'); return; }
   const [a, b] = A.quietEnds(d, sr);
-  if (b - a < sr * 0.08) { toast('I didn’t hear anything. Is the microphone on?', 2600); return; }
+  if (b - a < sr * 0.08) { toast('Nothing heard. Is the microphone on?', 2600); return; }
   let part = d.slice(a, b);
   let pk = 0;
   for (let i = 0; i < part.length; i++) pk = Math.max(pk, Math.abs(part[i]));
   if (pk > 0 && pk < 0.35) { const k = 0.7 / pk; for (let i = 0; i < part.length; i++) part[i] *= k; }   // quiet voices, brought up
   const id = A.addBuf(A.monoBuffer(part, sr));
   takes++;
-  const clip = { id: newId(), lane: r.lane, start: r.start + a / sr, offset: 0, dur: part.length / sr, buf: id, gain: 1, kind: 'voice', name: 'Take ' + takes, color: '#F0525A' };
+  const clip = { id: newId(), lane: r.lane, start: r.start + a / sr, offset: 0, dur: part.length / sr, buf: id, gain: 1, kind: 'voice', name: 'Take ' + takes, color: '#C98A72' };
   change(() => { clip.lane = laneFor('voice', clip.start, clip.dur, r.lane); S.project.clips.push(clip); });
   S.sel = clip.id; lastTake = clip.id;
   emit('select');
-  toast('Got it! Press play, or make it silly', 2200);
+  toast('Take ' + takes);
 }
 
 // ---------------------------------------------------------------------------
-// Silly voices
+// Voice effects
 // ---------------------------------------------------------------------------
 let lastTake = null;
 const voiceCache = new Map();
@@ -357,7 +362,7 @@ async function applyVoice(k, id) {
 function voiceButtons(host, cls, onPick) {
   host.innerHTML = '';
   for (const v of A.VOICES) {
-    const b = el('button', cls, `<span class="emo">${v.icon}</span>${v.name}`);
+    const b = el('button', cls, v.name);
     b.dataset.voice = v.id;
     b.addEventListener('click', () => onPick(v.id));
     host.append(b);
@@ -368,13 +373,13 @@ voiceButtons($('#voice-pop'), '', (id) => { applyVoice(selected(), id); });
 function refreshSilly() {
   const k = sillyTarget();
   $('#silly-row').classList.toggle('ready', !!k);
-  $('#silly-what').textContent = k ? `(${k.name})` : '(record something first)';
+  $('#silly-what').textContent = k ? `(${k.name})` : '(record a take first)';
   for (const b of $$('#silly-row .chip')) b.classList.toggle('active', !!k && (k.voice || 'normal') === b.dataset.voice);
   const s = selected();
   for (const b of $$('#voice-pop button')) b.classList.toggle('active', !!s && (s.voice || 'normal') === b.dataset.voice);
 }
 $('#rec-big').addEventListener('click', recordVoice);
-$('#tl-rec').addEventListener('click', recordVoice);
+$('#tl-rec').addEventListener('click', () => recordAny());
 $('#opt-film').checked = P.film; $('#opt-count').checked = P.count;
 $('#opt-film').addEventListener('change', (e) => { P.film = e.target.checked; savePrefs(); });
 $('#opt-count').addEventListener('change', (e) => { P.count = e.target.checked; savePrefs(); });
@@ -441,10 +446,10 @@ function stopLoopPreview() {
   for (const t of $$('#loop-grid .tile')) t.classList.remove('playing');
 }
 for (const l of LOOPS) {
-  const t = el('button', 'tile', `<span class="emo">${l.icon}</span>${l.name}<small>${l.bpm} bpm</small>`);
+  const t = el('button', 'tile', `${l.name}<small>${l.bpm} bpm · ${l.minor ? 'minor' : 'major'}</small>`);
   t.style.setProperty('--c', l.color);
   draggable(t, {
-    info: () => ({ len: (60 / l.bpm) * 4 * l.chords.length, color: l.color, label: l.icon + ' ' + l.name }),
+    info: () => ({ len: (60 / l.bpm) * 4 * l.chords.length, color: l.color, label: l.name }),
     tap: async () => {
       const was = t.classList.contains('playing');
       stopLoopPreview(); A.stopPreview();
@@ -468,7 +473,7 @@ function addLoop(l, buf, t, lane) {
   stopLoopPreview();
   putIn(buf, { t, lane, kind: 'loop', name: l.name, color: l.color, loop: true });
   if (!S.project.clips.some((c) => c.kind === 'beat' || (c.kind === 'loop' && c.id !== S.sel))) S.project.bpm = l.bpm;
-  toast(`${l.icon} ${l.name} is in. Drag its end to make it longer`, 2400);
+  toast(`${l.name} added. Drag its end to make it longer`, 2400);
 }
 $('#loop-add').addEventListener('click', async () => { if (loopPick) addLoop(loopPick, await loopBuf(loopPick)); });
 
@@ -527,7 +532,7 @@ for (const [id, name] of Object.entries(KITS)) {
   b.addEventListener('click', () => { P.kit = id; savePrefs(); refreshKit(); drum(A.audio(), A.out(), 'kick', A.ctx.currentTime + 0.01, 0.85, id); });
   $('#kit-seg').append(b);
 }
-function refreshKit() { for (const b of $$('#kit-seg button')) b.classList.toggle('active', b.dataset.kit === P.kit); }
+function refreshKit() { for (const b of $$('#kit-seg button, #inst-chips .chip.kit')) b.classList.toggle('active', b.dataset.kit === P.kit); }
 const tempo = $('#tempo');
 tempo.value = P.bpm;
 const showTempo = () => { $('#tempo-val').textContent = P.bpm + ' bpm'; };
@@ -575,54 +580,191 @@ function showStep() {
 }
 $('#beat-try').addEventListener('click', () => (tryState ? stopTry() : startTry()));
 $('#beat-add').addEventListener('click', async () => {
-  if (!DRUMS.some((d) => P.grid[d.id].some(Boolean))) { toast('Tap some squares first'); return; }
+  if (!DRUMS.some((d) => P.grid[d.id].some(Boolean))) { toast('The pattern is empty'); return; }
   stopTry();
   const buf = await renderBeat(A.rate(), P.grid, P.bpm, P.kit);
   putIn(buf, { kind: 'beat', name: P.preset ? P.preset + ' beat' : 'My beat', color: '#E2A951', loop: true, dur: buf.duration * 2 });
   if (!S.project.clips.some((c) => c.kind === 'loop' || (c.kind === 'beat' && c.id !== S.sel))) S.project.bpm = P.bpm;
-  toast('Your beat is in. Drag its end to make it go on', 2400);
+  toast('Beat added. Drag its end to make it longer', 2400);
 });
 
 // ---------------------------------------------------------------------------
-// Play: the pads
+// Instruments: a keyboard for the keys and synths, pads for the drums. A note
+// sounds for as long as it's held (the instrument's own decay for the ones
+// that ring). Record puts what you play on the timeline.
 // ---------------------------------------------------------------------------
-for (const id of PAD_INSTRUMENTS) {
-  const b = el('button', 'chip', `<span class="emo">${INSTRUMENTS[id].icon}</span>${INSTRUMENTS[id].name}`);
-  b.dataset.inst = id;
-  b.addEventListener('click', () => { P.inst = id; savePrefs(); refreshInst(); hitPad(PADS[0], null); });
-  $('#inst-chips').append(b);
-}
-function refreshInst() { for (const b of $$('#inst-chips .chip')) b.classList.toggle('active', b.dataset.inst === P.inst); }
-PADS.forEach((p, i) => {
-  const b = el('button', 'pad', String((i + 1) % 10));
-  b.style.setProperty('--c', p.color);
-  p.el = b;
-  b.addEventListener('pointerdown', (e) => { e.preventDefault(); hitPad(p, b); });
-  $('#pads').append(b);
-});
-function hitPad(p, b) {
+const HOLD = 12;                    // the longest a held note lasts, seconds
+const KEY_CODES = ['KeyA', 'KeyW', 'KeyS', 'KeyE', 'KeyD', 'KeyF', 'KeyT', 'KeyG', 'KeyY', 'KeyH', 'KeyU', 'KeyJ', 'KeyK', 'KeyO', 'KeyL', 'KeyP', 'Semicolon', 'Quote'];
+const PAD_CODES = ['KeyA', 'KeyS', 'KeyD', 'KeyF', 'KeyG', 'KeyH', 'KeyJ', 'KeyK', 'KeyL'];
+const NOTE_NAMES = ['C', 'C♯', 'D', 'D♯', 'E', 'F', 'F♯', 'G', 'G♯', 'A', 'A♯', 'B'];
+const isDrums = () => P.inst === 'drums';
+// When, in the take, a note played now lands: by the sound clock, as you heard it.
+const takeTime = () => Math.max(0, A.ctx.currentTime - (A.ctx.outputLatency || 0) - S.rec.when);
+const baseNote = () => 60 + 12 * P.oct + (INSTRUMENTS[P.inst]?.shift || 0);
+
+// Everything played live goes through one tone filter, darker or brighter.
+let instBus = null, toneFilter = null;
+const toneHz = (v) => 180 * Math.pow(2, v * 6.8);
+function bus() {
   const c = A.audio();
-  INSTRUMENTS[P.inst].play(c, A.out(), c.currentTime + 0.005, p.midi, 0.35, 0.85);
-  if (b) { b.classList.add('hit'); setTimeout(() => b.classList.remove('hit'), 120); }
-  if (S.rec?.kind === 'tune') { S.rec.notes.push({ t: S.playhead - S.rec.start, midi: p.midi }); S.rec.hit = 1; }
+  if (!instBus) {
+    toneFilter = c.createBiquadFilter(); toneFilter.type = 'lowpass'; toneFilter.Q.value = 0.7;
+    instBus = c.createGain(); instBus.connect(toneFilter).connect(A.out());
+  }
+  toneFilter.frequency.setTargetAtTime(toneHz(P.tone), c.currentTime, 0.02);
+  return instBus;
 }
+
+const live = new Map();   // who's holding a note (a key code or a pointer) → { g, t0, n, el }
+function noteOn(who, midi, keyEl) {
+  if (live.has(who)) noteOff(who);
+  const c = A.audio(), t = c.currentTime + 0.005, g = c.createGain();
+  g.connect(bus());
+  INSTRUMENTS[P.inst].play(c, g, t, midi, HOLD, 0.85);
+  let n = null;
+  if (S.rec?.kind === 'tune') { n = { t: takeTime(), midi, vel: 0.85, inst: P.inst }; S.rec.notes.push(n); S.rec.hit = 1; }
+  live.set(who, { g, t0: c.currentTime, n, el: keyEl });
+  keyEl?.classList.add('down');
+}
+function noteOff(who) {
+  const v = live.get(who); if (!v) return;
+  live.delete(who);
+  const c = A.ctx, I = INSTRUMENTS[P.inst];
+  if (!I?.ring) v.g.gain.setTargetAtTime(0, c.currentTime, I?.rel || 0.05);
+  setTimeout(() => v.g.disconnect(), (I?.ring ? HOLD : 2) * 1000);
+  if (v.n) v.n.dur = Math.max(0.05, c.currentTime - v.t0);
+  if (v.el && ![...live.values()].some((x) => x.el === v.el)) v.el.classList.remove('down');
+}
+function allNotesOff() { for (const who of [...live.keys()]) noteOff(who); }
+function hitDrum(d, padEl) {
+  const c = A.audio();
+  drum(c, bus(), d.id, c.currentTime + 0.005, 0.85, P.kit);
+  if (S.rec?.kind === 'tune') { S.rec.notes.push({ t: takeTime(), drum: d.id, kit: P.kit, vel: 0.85 }); S.rec.hit = 1; }
+  if (padEl) { padEl.classList.add('down'); setTimeout(() => padEl.classList.remove('down'), 110); }
+}
+
+function buildInstChips() {
+  const host = $('#inst-chips');
+  host.innerHTML = '';
+  const group = (label, ids) => {
+    const row = el('div', 'inst-row', `<span class="inst-label">${label}</span>`);
+    const chips = el('div', 'chips small');
+    for (const id of ids) {
+      const b = el('button', 'chip', id === 'drums' ? 'Drum kit' : INSTRUMENTS[id].name);
+      b.dataset.inst = id;
+      b.addEventListener('click', () => pickInst(id));
+      chips.append(b);
+    }
+    if (label === 'Drums') for (const [id, name] of Object.entries(KITS)) {
+      const b = el('button', 'chip kit', name);
+      b.dataset.kit = id;
+      b.addEventListener('click', () => { P.kit = id; savePrefs(); refreshKit(); pickInst('drums'); });
+      chips.append(b);
+    }
+    row.append(chips);
+    host.append(row);
+  };
+  for (const [label, ids] of INSTRUMENT_GROUPS) group(label, ids);
+  group('Drums', ['drums']);
+}
+function pickInst(id) {
+  allNotesOff();
+  P.inst = id; savePrefs(); refreshInst();
+  if (id === 'drums') hitDrum(DRUMS[0], null);
+  else { const c = A.audio(), g = c.createGain(); g.connect(bus()); INSTRUMENTS[id].play(c, g, c.currentTime + 0.005, baseNote() + 7, 0.3, 0.8); }
+}
+function refreshInst() {
+  for (const b of $$('#inst-chips .chip[data-inst]')) b.classList.toggle('active', b.dataset.inst === P.inst);
+  $('#keys').hidden = isDrums(); $('#drum-pads').hidden = !isDrums();
+  $('#oct').hidden = isDrums();
+  $('#keys-hint').innerHTML = isDrums() ? 'Keys <kbd>A</kbd>–<kbd>L</kbd> play the pads' : 'Keys <kbd>A</kbd>–<kbd>K</kbd> play, <kbd>Z</kbd> <kbd>X</kbd> octave';
+  $('#oct-val').textContent = 'C' + (4 + P.oct + (INSTRUMENTS[P.inst]?.shift || 0) / 12);
+  buildKeys();
+}
+
+// The keyboard: two octaves and a top C, white keys with black ones over them.
+function buildKeys() {
+  const host = $('#keys');
+  host.innerHTML = '';
+  const base = baseNote(), whites = [];
+  for (let i = 0; i <= 24; i++) {
+    const pc = i % 12, black = [1, 3, 6, 8, 10].includes(pc);
+    const k = el('div', black ? 'k black' : 'k white');
+    k.dataset.midi = base + i;
+    if (!black) {
+      whites.push(k);
+      const code = KEY_CODES[i];
+      k.innerHTML = `<small>${code ? code.replace(/^Key/, '').replace('Semicolon', ';').replace('Quote', "'") : ''}</small>${pc === 0 ? `<b>C${Math.floor((base + i) / 12) - 1}</b>` : ''}`;
+      host.append(k);
+    } else {
+      k.style.setProperty('--at', whites.length);
+      host.append(k);
+    }
+  }
+  host.style.setProperty('--whites', whites.length);
+}
+function keyAt(x, y) { return document.elementFromPoint(x, y)?.closest?.('#keys .k'); }
+$('#keys').addEventListener('pointerdown', (e) => {
+  const k = keyAt(e.clientX, e.clientY); if (!k) return;
+  e.preventDefault();
+  try { $('#keys').setPointerCapture(e.pointerId); } catch { /* fine */ }
+  noteOn('p' + e.pointerId, +k.dataset.midi, k);
+});
+$('#keys').addEventListener('pointermove', (e) => {
+  const who = 'p' + e.pointerId, v = live.get(who); if (!v) return;
+  const k = keyAt(e.clientX, e.clientY);
+  if (k && k !== v.el) noteOn(who, +k.dataset.midi, k);   // a slide along the keys
+});
+for (const ev of ['pointerup', 'pointercancel']) $('#keys').addEventListener(ev, (e) => noteOff('p' + e.pointerId));
+
+DRUMS.forEach((d, i) => {
+  const b = el('button', 'dpad', `${d.name}<small>${PAD_CODES[i].replace('Key', '')}</small>`);
+  b.style.setProperty('--c', d.color);
+  d.pad = b;
+  b.addEventListener('pointerdown', (e) => { e.preventDefault(); hitDrum(d, b); });
+  $('#drum-pads').append(b);
+});
+
+function setOct(d) {
+  allNotesOff();
+  P.oct = Math.max(-3, Math.min(3, P.oct + d)); savePrefs(); refreshInst();
+}
+$('#oct-down').addEventListener('click', () => setOct(-1));
+$('#oct-up').addEventListener('click', () => setOct(1));
+$('#tone').value = P.tone;
+$('#tone').addEventListener('input', (e) => { P.tone = +e.target.value; bus(); });
+$('#tone').addEventListener('change', savePrefs);
+
 async function recordTune() {
   if (S.rec) { stopRecording(); return; }
   if (counting) { cancelCount(); return; }
   stopPreviews(); stopTry(); if (S.playing) stopPlay();
   if (P.count && !(await countdown())) return;
   beginTake('tune');
-  toast('Play the pads! Tap again to stop', 2000);
+  toast('Recording. Play, then Record again to stop', 2000);
 }
+const takeTimeOf = (r) => Math.max(0, A.ctx.currentTime - (A.ctx.outputLatency || 0) - r.when);
 async function finishTune(r) {
-  if (!r.notes.length) { toast('No notes played. Tap the pads while it records'); return; }
+  // Notes still held when it stopped last until then.
+  const end = Math.max(r.len, takeTimeOf(r));
+  for (const n of r.notes) if (n.midi != null && n.dur == null) n.dur = Math.max(0.05, end - n.t);
+  allNotesOff();
+  if (!r.notes.length) { toast('Nothing played'); return; }
   const t0 = r.notes[0].t, notes = r.notes.map((n) => ({ ...n, t: n.t - t0 }));
-  const len = notes[notes.length - 1].t + 0.5;
-  const buf = await render(A.rate(), len, (c, o) => playTune(c, o, notes, P.inst, 0), { tail: 2.5 });
-  putIn(buf, { t: r.start + t0, kind: 'tune', name: 'My ' + INSTRUMENTS[P.inst].name.toLowerCase() + ' tune', color: '#8E6BB8' });
-  toast('Your tune is in!');
+  const len = Math.max(...notes.map((n) => n.t + (n.dur || 0))) + 0.1;
+  const hz = toneHz(P.tone);
+  const buf = await render(A.rate(), len, (c, o) => {
+    const f = c.createBiquadFilter(); f.type = 'lowpass'; f.Q.value = 0.7; f.frequency.value = hz; f.connect(o);
+    playTune(c, f, notes, P.inst, 0);
+  }, { tail: 3 });
+  const kinds = [...new Set(notes.map((n) => (n.drum ? 'drums' : n.inst)))];
+  const name = kinds.map((k) => (k === 'drums' ? 'Drums' : INSTRUMENTS[k].name)).join(' + ');
+  putIn(buf, { t: r.start + t0, kind: 'tune', name, color: '#9C93B5' });
+  toast(name + ' added');
 }
 $('#tune-rec').addEventListener('click', recordTune);
+// Record: what you play, on the Instruments tab; your voice everywhere else.
+const recordAny = () => (P.tab === 'play' && !S.rec?.kind?.startsWith('voice') ? recordTune() : recordVoice());
 
 // ---------------------------------------------------------------------------
 // Silly sounds
@@ -633,11 +775,28 @@ async function sfxBuf(s) {
   return sfxBufs.get(s.id);
 }
 let sfxPick = null;
+{
+  const cats = el('div', 'chips small');
+  cats.id = 'sfx-cats';
+  for (const cat of [...new Set(SFX.map((x) => x.cat))]) {
+    const b = el('button', 'chip', cat);
+    b.dataset.cat = cat;
+    b.addEventListener('click', () => { P.fx = cat; savePrefs(); refreshFx(); });
+    cats.append(b);
+  }
+  $('#tab-sounds').prepend(cats);
+}
+function refreshFx() {
+  if (!SFX.some((x) => x.cat === P.fx)) P.fx = SFX[0].cat;
+  for (const b of $$('#sfx-cats .chip')) b.classList.toggle('active', b.dataset.cat === P.fx);
+  for (const t of $$('#sfx-grid .tile')) t.hidden = t.dataset.cat !== P.fx;
+}
 for (const s of SFX) {
-  const t = el('button', 'tile', `<span class="emo">${s.icon}</span>${s.name}`);
+  const t = el('button', 'tile', s.name);
+  t.dataset.cat = s.cat;
   t.style.setProperty('--c', s.color);
   draggable(t, {
-    info: () => ({ len: s.len, color: s.color, label: s.icon + ' ' + s.name }),
+    info: () => ({ len: s.len, color: s.color, label: s.name }),
     tap: () => {
       const c = A.audio();
       s.make(c, A.out(), c.currentTime + 0.01);
@@ -651,7 +810,7 @@ for (const s of SFX) {
   $('#sfx-grid').append(t);
 }
 {
-  const foot = el('div', 'tab-foot', '<span class="hint">Tap to hear. Drag onto the timeline, or tap <b>Put it in</b> for the playhead.</span><button class="go" id="sfx-add" disabled>Put it in</button>');
+  const foot = el('div', 'tab-foot', '<span class="hint">Tap to hear. Drag onto the timeline, or <b>Add</b> at the playhead.</span><button class="go" id="sfx-add" disabled>Add</button>');
   $('#tab-sounds').append(foot);
   $('#sfx-add').addEventListener('click', async () => { if (sfxPick) putIn(await sfxBuf(sfxPick), { kind: 'sfx', name: sfxPick.name, color: sfxPick.color }); });
 }
@@ -661,10 +820,10 @@ for (const s of SFX) {
 // ---------------------------------------------------------------------------
 async function bringIn(files) {
   const list = [...files].filter((f) => /^audio\/|^video\/(webm|mp4)/.test(f.type) || /\.(mp3|wav|m4a|mp4|ogg|oga|aac|flac|webm|opus)$/i.test(f.name));
-  if (!list.length) { toast('That isn’t a sound I know. Try an mp3 or a wav', 2400); return; }
+  if (!list.length) { toast('Not a sound file. Try an mp3 or a wav', 2400); return; }
   let t = S.playhead;
   for (const f of list) {
-    toast('Bringing in ' + f.name + '…', 8000);
+    toast('Importing ' + f.name + '…', 8000);
     try {
       const buf = await A.decodeFile(f);
       // A long song is cut to the film (drag its end to hear more of it).
@@ -673,7 +832,7 @@ async function bringIn(files) {
       const name = f.name.replace(/\.[^.]+$/, '').slice(0, 28);
       const c = putIn(buf, { t, kind: 'import', name, color: '#4F8A8B', dur });
       t = clipEnd(c);
-      toast(`${name} is in`);
+      toast(`${name} added`);
     } catch { toast(`Couldn’t open ${f.name}`, 2400); }
   }
 }
@@ -696,7 +855,7 @@ function chop() {
   const inside = (k) => t > k.start + 0.02 && t < clipEnd(k) - 0.02;
   const s = selected();
   const which = s ? (inside(s) ? [s] : []) : S.project.clips.filter(inside);
-  if (!which.length) { toast(s ? 'Put the playhead over the sound to chop it there' : 'Pick a sound, then put the playhead where to chop', 2400); return; }
+  if (!which.length) { toast(s ? 'Put the playhead over the clip to split it' : 'Pick a clip, then put the playhead where to split', 2400); return; }
   let right = null;
   change(() => {
     for (const k of which) {
@@ -720,12 +879,12 @@ $('#ct-loop').addEventListener('click', () => {
     if (c.loop) { delete c.loop; if (c.offset + c.dur > L) { c.dur = Math.max(0.05, Math.min(c.dur, L - c.offset)); } }
     else { c.loop = true; delete c.src; delete c.voice; }
   });
-  toast(clipById(k.id).loop ? 'Loop on: drag its end and it goes round and round' : 'Loop off', 2200);
+  toast(clipById(k.id).loop ? 'Loop on: drag its end to repeat it' : 'Loop off', 2200);
 });
 $('#ct-fill').addEventListener('click', () => {
   const k = selected(); if (!k) return;
   const want = S.project.length - k.start;
-  if (want <= 0.05) { toast('It’s already at the end'); return; }
+  if (want <= 0.05) { toast('Already at the end'); return; }
   const L = A.bufs.get(k.buf).duration;
   change(() => {
     const c = clipById(k.id);
@@ -735,7 +894,7 @@ $('#ct-fill').addEventListener('click', () => {
 });
 $('#ct-voice').addEventListener('click', () => {
   const k = selected(); if (!k) return;
-  if (k.loop) { toast('Silly voices are for sounds that don’t loop'); return; }
+  if (k.loop) { toast('Voice effects need a clip that doesn’t loop'); return; }
   const pop = $('#voice-pop');
   if (!pop.hidden) { pop.hidden = true; return; }
   closePops('#voice-pop');
@@ -776,8 +935,6 @@ function refreshClipBar() {
   $('#ct-loop').classList.toggle('on', !!k.loop);
   $('#ct-voice').classList.toggle('on', !!k.voice && k.voice !== 'normal');
   $('#ct-voice').disabled = !!k.loop;
-  const v = A.VOICES.find((x) => x.id === (k.voice || 'chipmunk'));
-  $('#ct-voice .emo').textContent = k.voice && k.voice !== 'normal' ? v.icon : '🐿️';
   if (document.activeElement !== $('#ct-gain')) $('#ct-gain').value = k.gain ?? 1;
 }
 on('select', () => { refreshClipBar(); refreshSilly(); TL.redraw(); });
@@ -793,18 +950,18 @@ function buildLanes() {
   host.innerHTML = '';
   host.style.paddingTop = rulerHt + 'px';
   for (const l of S.project.lanes) {
-    const d = el('div', 'lane-head', `<span class="emo">${l.icon}</span><span class="nm">${l.name}</span>`);
+    const d = el('div', 'lane-head', `<span class="nm">${l.name}</span>`);
     d.style.height = laneHt + 'px';
     const m = el('button', l.mute ? 'off' : '', l.mute
       ? '<svg viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="m16 9.5 5 5M21 9.5l-5 5"/></svg>'
       : '<svg viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></svg>');
-    m.title = l.mute ? 'Turn this lane back on' : 'Hush this lane';
+    m.title = l.mute ? 'Unmute' : 'Mute';
     m.addEventListener('click', () => change(() => { const x = laneById(l.id); x.mute = !x.mute; if (!x.mute) delete x.mute; }));
     d.append(m);
     host.append(d);
   }
   if (S.project.lanes.length < MAX_LANES && laneHt * (S.project.lanes.length + 1) + rulerHt < host.clientHeight + laneHt * 0.6) {
-    const add = el('button', '', '+ Lane');
+    const add = el('button', '', '+ Track');
     add.id = 'lane-add';
     add.addEventListener('click', () => { change(() => addLane()); });
     host.append(add);
@@ -830,7 +987,7 @@ async function makeDemo() {
   change(() => { S.project = p; });
   S.sel = null; S.playhead = 0; S.view.t0 = 0; S.view.pps = 0;
   TL.clampView();
-  toast('Press play! Then record your own voice over it', 2600);
+  toast('Example ready. Press play', 2400);
 }
 
 // ---------------------------------------------------------------------------
@@ -848,8 +1005,22 @@ window.addEventListener('keydown', (e) => {
   if (mod && (k === 'd' || k === 'D')) { e.preventDefault(); duplicate(); return; }
   if (mod && (k === 's' || k === 'S')) { e.preventDefault(); download(fileBlob(S.project), 'My sounds.ksound'); toast('Saved'); return; }
   if (mod || e.altKey) return;
+  // On the Instruments tab the letters play.
+  if (P.tab === 'play' && !typing) {
+    if (e.code === 'KeyZ' || e.code === 'KeyX') { if (!e.repeat && !isDrums()) setOct(e.code === 'KeyZ' ? -1 : 1); return; }
+    if (isDrums()) {
+      const i = PAD_CODES.indexOf(e.code);
+      if (i >= 0 && DRUMS[i]) { if (!e.repeat) hitDrum(DRUMS[i], DRUMS[i].pad); e.preventDefault(); return; }
+    } else {
+      const i = KEY_CODES.indexOf(e.code);
+      if (i >= 0) {
+        if (!e.repeat) noteOn(e.code, baseNote() + i, $(`#keys .k[data-midi="${baseNote() + i}"]`));
+        e.preventDefault(); return;
+      }
+    }
+  }
   if (k === ' ') { e.preventDefault(); togglePlay(); }
-  else if (k === 'r' || k === 'R') recordVoice();
+  else if (k === 'r' || k === 'R') recordAny();
   else if (k === 's' || k === 'S') chop();
   else if (k === 'Delete' || k === 'Backspace') { e.preventDefault(); del(); }
   else if (k === 'Home') seek(0);
@@ -860,8 +1031,9 @@ window.addEventListener('keydown', (e) => {
   else if (k === '+' || k === '=') TL.zoom(1.5);
   else if (k === '-' || k === '_') TL.zoom(1 / 1.5);
   else if (k === 'Escape') { closePops(); if (S.sel) { S.sel = null; emit('select'); } }
-  else if (/^[0-9]$/.test(k)) { const i = (+k + 9) % 10; hitPad(PADS[i], PADS[i].el); }
 });
+window.addEventListener('keyup', (e) => noteOff(e.code));
+window.addEventListener('blur', allNotesOff);
 
 function stopPreviews() { A.stopPreview(); stopLoopPreview(); stopTry(); }
 
@@ -895,7 +1067,7 @@ function frame() {
     S.rec.len = S.playhead - S.rec.start;
     if (S.rec.kind === 'tune') { S.rec.peaks.push(S.rec.hit); S.rec.hit *= 0.85; }
     TL.follow();
-    if (S.rec.len > 120) { toast('Two minutes is plenty! Stopped'); stopRecording(); }
+    if (S.rec.len > 120) { toast('Stopped at 2 minutes'); stopRecording(); }
   } else if (S.playing) {
     // Round and round: the next time through is lined up just before the end, so there's no gap.
     if (S.loop && A.playTime() > S.project.length - 0.3) A.queueLoop(S.project, S.project.length);
@@ -909,8 +1081,7 @@ function frame() {
   if (needFilm) {
     const lv = levelAt(S.playhead);
     if (S.rec?.kind === 'voice') lv.voice = Math.max(lv.voice, A.mic.level * 1.5);
-    drawFilm(S.playhead, lv, S.project.length);
-    needFilm = S.playing || !!S.rec;
+    needFilm = drawFilm(S.playhead, lv, S.project.length) === false || S.playing || !!S.rec;
   }
   const txt = `${S.playhead.toFixed(2)} s<small>frame ${frameOf(S.playhead)}</small>`;
   if (txt !== lastTimeTxt) { $('#tl-time').innerHTML = txt; lastTimeTxt = txt; }
@@ -936,12 +1107,12 @@ on('editing', () => { needFilm = true; });
 async function start() {
   setLook(P.soft);
   setTab(P.tab);
-  buildGrid(); markPreset(P.preset); refreshKit(); showTempo(); refreshInst();
+  buildGrid(); markPreset(P.preset); refreshKit(); showTempo(); buildInstChips(); refreshInst(); refreshFx();
   initViewer();
   TL.initTimeline();
   const saved = await loadLocal(A.addBuf);
   if (saved) {
-    S.project = saved;
+    S.project = tidyNames(saved);
     takes = saved.clips.filter((c) => c.kind === 'voice').length;
     resetHistory();
   }

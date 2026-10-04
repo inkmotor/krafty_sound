@@ -9,7 +9,10 @@
 // playhead, the start and other sounds' ends.
 
 import { S, FPS, emit, clipById, laneById, clipEnd, snap as snapshot, commit, fitLength, frameOf, addLane, MAX_LANES, changed } from './state.js';
-import { bufs, peaks, PEAK_BLOCK } from './audio.js';
+import { bufs, peaks, PEAK_BLOCK, VOICES } from './audio.js';
+
+// One calm colour for each kind of sound.
+export const KIND_COLOR = { voice: '#C98A72', loop: '#7FA39A', beat: '#C9AA6E', tune: '#9C93B5', sfx: '#93AD82', import: '#7D98AE' };
 
 const RULER = 30, PADL = 14, EDGE_MIN = 9, EDGE_MAX = 16, MIN_DUR = 0.05;
 let cv, g, wrap, W = 0, H = 0, dpr = 1;
@@ -145,7 +148,7 @@ function drawClip(c, k, isSel) {
   c.save();
   c.globalAlpha = muted ? 0.35 : 1;
   rr(c, x, y, w, h, 7);
-  c.fillStyle = k.color; c.fill();
+  c.fillStyle = KIND_COLOR[k.kind] || k.color; c.fill();
   c.clip();
   // The wave
   drawWave(c, k, x, y + 14, w, h - 16);
@@ -164,7 +167,7 @@ function drawClip(c, k, isSel) {
   // Name
   c.font = '600 11.5px ' + css('--font-display'); c.textAlign = 'left'; c.textBaseline = 'alphabetic';
   c.fillStyle = 'rgba(255,255,255,.95)'; c.shadowColor = 'rgba(0,0,0,.35)'; c.shadowBlur = 2;
-  const label = (k.loop ? '↻ ' : '') + k.name + (k.voice && k.voice !== 'normal' ? ' · ' + k.voice : '');
+  const label = (k.loop ? '↻ ' : '') + k.name + (k.voice && k.voice !== 'normal' ? ' · ' + (VOICES.find((v) => v.id === k.voice)?.name || k.voice) : '');
   if (w > 26) c.fillText(label, x + 7, y + 13);
   c.restore();
   if (isSel) {

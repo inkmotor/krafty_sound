@@ -1,7 +1,7 @@
 // The Sound room's state, its undo, and a little "something changed" bus.
 //
 //   project = { length (s), bpm, lanes: [lane], clips: [clip] }
-//   lane    = { id, name, icon, mute? }
+//   lane    = { id, name, mute? }
 //   clip    = { id, lane, start, offset, dur, buf, gain, loop?, fi?, fo?,
 //               kind, name, color, voice?, src? }
 //     start   where it begins on the timeline, in seconds
@@ -9,7 +9,7 @@
 //     dur     how long it plays for (a looping clip can be longer than its sound)
 //     fi, fo  fade in and out, seconds
 //     kind    voice | loop | beat | tune | sfx | import
-//     voice   the silly voice it has on; src = { buf, offset, dur }, the part
+//     voice   the voice effect it has on; src = { buf, offset, dur }, the part
 //             of the plain recording it was made from, so another voice (or
 //             "Me") starts again from that
 //
@@ -22,10 +22,10 @@ export const MAX_LANES = 6;
 export const newProject = () => ({
   length: 8, bpm: 110,
   lanes: [
-    { id: 'l1', name: 'Voices', icon: '🎤' },
-    { id: 'l2', name: 'Music', icon: '🎵' },
-    { id: 'l3', name: 'Sounds', icon: '💥' },
-    { id: 'l4', name: 'More', icon: '✨' },
+    { id: 'l1', name: 'Voice' },
+    { id: 'l2', name: 'Music' },
+    { id: 'l3', name: 'FX' },
+    { id: 'l4', name: 'Track 4' },
   ],
   clips: [],
 });
@@ -97,6 +97,13 @@ export function resetHistory() { undos.length = 0; redos.length = 0; }
 export function changed() { emit('change'); }
 
 // The film grows to fit what's on it (in whole seconds).
+// Projects saved before the tracks had plain names.
+const OLD_NAMES = { Voices: 'Voice', Sounds: 'FX', More: 'Track 4', Extra: 'Track 5', 'Even more': 'Track 6', Loads: 'Track 6' };
+export function tidyNames(p) {
+  for (const l of p.lanes) { if (OLD_NAMES[l.name]) l.name = OLD_NAMES[l.name]; delete l.icon; }
+  return p;
+}
+
 export function fitLength() {
   const p = S.project;
   const end = p.clips.reduce((m, c) => Math.max(m, clipEnd(c)), 0);
@@ -117,11 +124,9 @@ export function laneFor(kind, start, dur, prefer) {
   if (lanes.length < MAX_LANES) return addLane().id;
   return (want || lanes[0]).id;
 }
-const EXTRA = [['More', '✨'], ['Extra', '🎈'], ['Even more', '🌈'], ['Loads', '🎪']];
 export function addLane() {
   const lanes = S.project.lanes;
-  const [name, icon] = EXTRA[Math.max(0, lanes.length - 3) % EXTRA.length];
-  const l = { id: newId('l'), name, icon };
+  const l = { id: newId('l'), name: 'Track ' + (lanes.length + 1) };
   lanes.push(l);
   return l;
 }

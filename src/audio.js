@@ -284,7 +284,7 @@ export function quietEnds(d, sampleRate, thresh = 0.02) {
 }
 
 // ---------------------------------------------------------------------------
-// Silly voices. Each makes a new buffer from part of one, offline.
+// Voice effects. Each makes a new buffer from part of one, offline.
 // ---------------------------------------------------------------------------
 function impulse(c, secs, decay) {
   const n = Math.round(c.sampleRate * secs), b = c.createBuffer(2, n, c.sampleRate);
@@ -295,15 +295,15 @@ function impulse(c, secs, decay) {
   return b;
 }
 export const VOICES = [
-  { id: 'normal', name: 'Me', icon: '🙂' },
-  { id: 'chipmunk', name: 'Chipmunk', icon: '🐿️', speed: 1.6 },
-  { id: 'monster', name: 'Monster', icon: '👹', speed: 0.68 },
-  { id: 'robot', name: 'Robot', icon: '🤖' },
-  { id: 'echo', name: 'Echo', icon: '🏔️', tail: 1.6 },
-  { id: 'cave', name: 'Cave', icon: '🦇', tail: 2.2 },
-  { id: 'radio', name: 'Radio', icon: '📻' },
-  { id: 'alien', name: 'Alien', icon: '👽' },
-  { id: 'back', name: 'Backwards', icon: '🔄' },
+  { id: 'normal', name: 'Natural' },
+  { id: 'chipmunk', name: 'High', speed: 1.6 },
+  { id: 'monster', name: 'Low', speed: 0.68 },
+  { id: 'robot', name: 'Robot' },
+  { id: 'radio', name: 'Radio' },
+  { id: 'alien', name: 'Wobble' },
+  { id: 'echo', name: 'Echo', tail: 1.6 },
+  { id: 'cave', name: 'Hall', tail: 2.2 },
+  { id: 'back', name: 'Reverse' },
 ];
 export async function voiceFx(buf, offset, dur, id) {
   const v = VOICES.find((x) => x.id === id);

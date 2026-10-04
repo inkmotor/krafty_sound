@@ -28,7 +28,7 @@ function card(fill, path, lift = 6) {
 }
 
 export function drawFilm(t, lv, length) {
-  if (!W) return;
+  if (!W) return false;   // not laid out yet: try again next frame
   g.setTransform(dpr, 0, 0, dpr, 0, 0);
   const s = Math.min(W / 560, H / 330);
   // The stage: warm paper, lit from above, as Krafty's box.
