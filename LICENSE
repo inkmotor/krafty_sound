@@ -1,0 +1,9 @@
+Copyright (c) 2026 Matthew Thomas Lloyd. All rights reserved.
+
+This software and its source code are proprietary. No permission is granted
+to copy, modify, distribute, sublicense, or sell this software or any part of
+it, in whole or in part, without prior written permission from the copyright
+holder. Viewing the source does not grant any license to use it.
+
+Third-party components in vendor/ (three.js, Clipper) remain under their own
+licenses, as stated in those files.

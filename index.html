@@ -1,0 +1,171 @@
+<!doctype html>
+<html lang="en" class="soft">
+<head>
+<meta charset="utf-8">
+<title>Krafty Sound</title>
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<meta name="mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-title" content="Krafty Sound">
+<meta name="theme-color" content="#36373B">
+<link rel="icon" href="assets/favicon.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://api.fontshare.com">
+<link rel="stylesheet" href="https://api.fontshare.com/v2/css?f[]=general-sans@500,600&f[]=supreme@400,500,700&display=swap">
+<link rel="stylesheet" href="src/style.css">
+</head>
+<body>
+
+<!-- Top left: the brand -->
+<div id="topleft" class="chrome"><div id="brand"></div></div>
+<div id="room-menu" hidden></div>
+
+<!-- Top right: the room you're in, the look, files, help -->
+<div id="topright" class="chrome">
+  <button id="btn-room" class="key" title="Rooms">
+    <svg viewBox="0 0 24 24"><path d="M4 11v2M7.5 8v8M11 4.5v15M14.5 8.5v7M18 6.5v11M21 10.5v3"/></svg><span>Sound</span>
+  </button>
+  <button id="btn-look" class="key" title="Soft charcoal or paper white"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8.5"/><path d="M12 3.5v17a8.5 8.5 0 0 0 0-17z" fill="currentColor"/></svg></button>
+  <button id="btn-files" class="key" title="New, open, save"><svg viewBox="0 0 24 24"><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.2h7a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></svg></button>
+  <button id="btn-help" class="key" title="How it works"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="M9.6 9.3a2.5 2.5 0 1 1 3.6 2.3c-.8.4-1.2 1-1.2 1.9v.4"/><circle cx="12" cy="17.2" r=".6" fill="currentColor"/></svg></button>
+</div>
+
+<div id="files-menu" class="pop" hidden>
+  <button data-file="new"><svg viewBox="0 0 24 24"><path d="M6 3.5h8l4 4v13H6z"/><path d="M14 3.5v4h4"/></svg>New</button>
+  <button data-file="open"><svg viewBox="0 0 24 24"><path d="M3.5 7.5a2 2 0 0 1 2-2h4l2 2.2h7a2 2 0 0 1 2 2V17a2 2 0 0 1-2 2h-13a2 2 0 0 1-2-2z"/></svg>Open…</button>
+  <button data-file="save"><svg viewBox="0 0 24 24"><path d="M12 4v11M7.5 10.5 12 15l4.5-4.5M5 19.5h14"/></svg>Save…</button>
+  <hr>
+  <button data-file="wav"><svg viewBox="0 0 24 24"><path d="M4 11v2M7.5 8v8M11 4.5v15M14.5 8.5v7M18 6.5v11M21 10.5v3"/></svg>Save as a sound (.wav)</button>
+  <button data-file="demo"><svg viewBox="0 0 24 24"><path d="m12 3 2.6 5.6 6 .7-4.5 4.1 1.2 6L12 16.4 6.7 19.4l1.2-6-4.5-4.1 6-.7z"/></svg>Show me an example</button>
+</div>
+<input id="open-input" type="file" accept=".ksound" hidden>
+<input id="import-input" type="file" accept="audio/*,video/mp4,.mp3,.wav,.m4a,.mp4,.ogg,.aac,.webm,.flac" multiple hidden>
+
+<!-- The film: in Krafty, your box plays here; standalone, a paper fish stands in -->
+<section id="viewer" class="panel">
+  <canvas id="film"></canvas>
+  <div id="countdown" hidden></div>
+  <div id="film-note">Stand-in film: in Krafty, your own box plays here</div>
+</section>
+
+<!-- The sound box: everything to make a sound with -->
+<section id="box" class="panel">
+  <nav id="tabs" class="seg">
+    <button data-tab="record"><span class="dot rec"></span>Record</button>
+    <button data-tab="loops">Loops</button>
+    <button data-tab="beats">Beats</button>
+    <button data-tab="play">Play</button>
+    <button data-tab="sounds">Sounds</button>
+    <button data-tab="bring">Bring in</button>
+  </nav>
+
+  <div class="tab" id="tab-record">
+    <div class="rec-left">
+      <button id="rec-big" title="Record (R)"><span id="rec-ring"></span><span id="rec-core"></span></button>
+      <div id="rec-say">Tap to record</div>
+    </div>
+    <div class="rec-right">
+      <label class="switch"><input type="checkbox" id="opt-film" checked><span></span>Play my film while I record</label>
+      <label class="switch"><input type="checkbox" id="opt-count" checked><span></span>Count me in: 3, 2, 1</label>
+      <div id="silly">
+        <div class="label">Make it silly <small id="silly-what">(record something first)</small></div>
+        <div id="silly-row" class="chips"></div>
+      </div>
+      <div id="mic-help" hidden></div>
+    </div>
+  </div>
+
+  <div class="tab" id="tab-loops">
+    <div class="hint">Tap to hear one. Drag it down onto the timeline, or tap <b>Put it in</b>.</div>
+    <div id="loop-grid" class="tiles"></div>
+    <div class="tab-foot"><button class="go" id="loop-add" disabled>Put it in</button></div>
+  </div>
+
+  <div class="tab" id="tab-beats">
+    <div class="beat-top">
+      <div id="beat-presets" class="chips small"></div>
+      <div class="seg small" id="kit-seg"></div>
+    </div>
+    <div id="grid"></div>
+    <div class="tab-foot">
+      <button class="pill" id="beat-try"><svg viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z"/></svg>Try it</button>
+      <label class="tempo"><span>Slow</span><input type="range" id="tempo" min="60" max="180" step="1"><span>Fast</span><b id="tempo-val"></b></label>
+      <button class="go" id="beat-add">Put it in</button>
+    </div>
+  </div>
+
+  <div class="tab" id="tab-play">
+    <div id="inst-chips" class="chips small"></div>
+    <div id="pads"></div>
+    <div class="tab-foot">
+      <button class="pill rec" id="tune-rec"><span class="dot rec"></span>Record a tune</button>
+      <span class="hint">Every pad sounds good with every other. Keys <kbd>1</kbd>–<kbd>0</kbd> play them too.</span>
+    </div>
+  </div>
+
+  <div class="tab" id="tab-sounds">
+    <div id="sfx-grid" class="tiles small"></div>
+  </div>
+
+  <div class="tab" id="tab-bring">
+    <button id="drop">
+      <svg viewBox="0 0 24 24"><path d="M12 15V4M7.5 8.5 12 4l4.5 4.5M5 14v4.5a1.5 1.5 0 0 0 1.5 1.5h11a1.5 1.5 0 0 0 1.5-1.5V14"/></svg>
+      <b>Bring in a sound</b>
+      <span>Drop an mp3 (or wav, m4a, ogg) here, or tap to pick one</span>
+    </button>
+    <div class="hint">No microphone? Record on your phone, save it to Google Drive, then pick it from Drive here.</div>
+  </div>
+</section>
+
+<!-- The timeline -->
+<section id="timeline" class="panel">
+  <div id="tl-bar">
+    <button id="tl-start" title="Back to the start (Home)"><svg viewBox="0 0 24 24"><path d="M6 5v14M18 5 9 12l9 7z"/></svg></button>
+    <button id="tl-play" title="Play (Space)"><svg viewBox="0 0 24 24"><path d="M7 4.5v15l12-7.5z"/></svg></button>
+    <button id="tl-rec" title="Record (R)"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="6.5"/></svg></button>
+    <span id="tl-time">0.00 s</span>
+    <div id="clip-bar">
+      <span id="clip-hint">Tap a sound on the timeline to chop it, loop it or make it silly</span>
+      <div id="clip-tools" hidden>
+        <button id="ct-chop" title="Chop at the playhead (S)"><svg viewBox="0 0 24 24"><circle cx="6" cy="6.5" r="2.6"/><circle cx="6" cy="17.5" r="2.6"/><path d="M8.2 8 20 17M8.2 16 20 7"/></svg><span>Chop</span></button>
+        <button id="ct-loop" title="Loop: it goes round and round when you stretch it"><svg viewBox="0 0 24 24"><path d="M17 3.5 20 6.5l-3 3"/><path d="M4 12v-1.5a4 4 0 0 1 4-4h12M7 20.5 4 17.5l3-3"/><path d="M20 12v1.5a4 4 0 0 1-4 4H4"/></svg><span>Loop</span></button>
+        <button id="ct-fill" title="Stretch it to the end"><svg viewBox="0 0 24 24"><path d="M4 12h15M15 8l4 4-4 4M4 6v12"/></svg><span>To the end</span></button>
+        <button id="ct-voice" title="Silly voices"><span class="emo">🐿️</span><span>Silly</span></button>
+        <label id="ct-vol" title="How loud"><svg viewBox="0 0 24 24"><path d="M4 9.5h3.5L12 5.5v13l-4.5-4H4z"/><path d="M15.5 9a4 4 0 0 1 0 6M18 6.5a7.5 7.5 0 0 1 0 11"/></svg><input type="range" id="ct-gain" min="0" max="2" step="0.01"></label>
+        <button id="ct-copy" title="Copy (Ctrl D)"><svg viewBox="0 0 24 24"><rect x="8" y="8" width="12" height="12" rx="2"/><path d="M16 8V6a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v8a2 2 0 0 0 2 2h2"/></svg></button>
+        <button id="ct-del" title="Throw away (Delete)"><svg viewBox="0 0 24 24"><path d="M4.5 7h15M9.5 7V4.5h5V7M6.5 7l1 13h9l1-13"/></svg></button>
+      </div>
+    </div>
+    <button id="tl-snap" title="Snap to the beat"><svg viewBox="0 0 24 24"><path d="M6 4v7a6 6 0 0 0 12 0V4h-4v7a2 2 0 0 1-4 0V4z"/><path d="M6 8h4M14 8h4"/></svg></button>
+    <button id="tl-loop" title="Play round and round (L)"><svg viewBox="0 0 24 24"><path d="M17 3.5 20 6.5l-3 3"/><path d="M4 12v-1.5a4 4 0 0 1 4-4h12M7 20.5 4 17.5l3-3"/><path d="M20 12v1.5a4 4 0 0 1-4 4H4"/></svg></button>
+    <button id="tl-out" title="Zoom out (-)"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 5 5M8 10.5h5"/></svg></button>
+    <button id="tl-in" title="Zoom in (+)"><svg viewBox="0 0 24 24"><circle cx="10.5" cy="10.5" r="6"/><path d="m15 15 5 5M8 10.5h5M10.5 8v5"/></svg></button>
+    <input id="tl-secs" type="number" min="1" max="600" step="1" title="How long the film is, in seconds"><span class="unit">s</span>
+    <button id="tl-undo" title="Undo (Ctrl Z)"><svg viewBox="0 0 24 24"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 0 11H11"/></svg></button>
+    <button id="tl-redo" title="Redo (Ctrl Shift Z)"><svg viewBox="0 0 24 24"><path d="m15 14 5-5-5-5"/><path d="M20 9H9.5a5.5 5.5 0 0 0 0 11H13"/></svg></button>
+  </div>
+  <div id="tl-body">
+    <div id="lanes"></div>
+    <div id="tl-wrap"><canvas id="tl"></canvas><div id="tl-empty">Record your voice, or drag a sound down here</div></div>
+  </div>
+</section>
+
+<div id="voice-pop" class="pop" hidden></div>
+<div id="help" class="pop" hidden>
+  <h2>The Sound room</h2>
+  <ul>
+    <li><b>Record</b>: tap the big red button, say something, tap again. Your film plays while you talk, so it lines up.</li>
+    <li><b>Make it silly</b>: chipmunk, monster, robot, echo… tap one to hear your voice change. <b>Me</b> puts it back.</li>
+    <li><b>Loops</b> are a little band in a mood. <b>Beats</b>: tap the squares to make your own. <b>Play</b>: tap the pads, or record a tune.</li>
+    <li><b>Sounds</b>: boings, pops and kabooms. Tap to hear, drag onto the timeline.</li>
+    <li><b>Bring in</b> an mp3 from your computer or phone.</li>
+    <li><b>On the timeline</b>: drag a sound to move it. Drag its ends to trim it. Drag the little corners to fade it. <b>Chop</b> cuts it at the playhead. <b>Loop</b> makes it go round when you stretch it.</li>
+    <li>Keys: <kbd>Space</kbd> play, <kbd>R</kbd> record, <kbd>S</kbd> chop, <kbd>Delete</kbd>, <kbd>Ctrl Z</kbd> undo, <kbd>,</kbd> <kbd>.</kbd> step a frame, <kbd>L</kbd> loop.</li>
+  </ul>
+  <p class="small">Saved as you go, in this browser. <b>Files ▸ Save</b> keeps a copy; <b>Save as a sound</b> makes a .wav for anywhere.</p>
+</div>
+<div id="drag-ghost" hidden></div>
+<div id="toast" hidden></div>
+
+<script type="module" src="src/main.js"></script>
+</body>
+</html>
