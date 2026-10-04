@@ -1,0 +1,6 @@
+{
+  "version": "0.0.1",
+  "configurations": [
+    { "name": "sound", "runtimeExecutable": "/usr/bin/ruby", "runtimeArgs": ["serve.rb", "8776"], "port": 8776 }
+  ]
+}
