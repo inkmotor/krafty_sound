@@ -321,15 +321,15 @@ const KIT_SETS = {
 };
 export const KITS = { studio: 'Studio', boom: '808', lofi: 'Lo-fi' };
 export const DRUMS = [
-  { id: 'kick', name: 'Kick', color: '#C98A72' },
-  { id: 'snare', name: 'Snare', color: '#C9AA6E' },
-  { id: 'clap', name: 'Clap', color: '#B99A9A' },
-  { id: 'rim', name: 'Rim', color: '#A9A57E' },
-  { id: 'hat', name: 'Hat', color: '#93AD82' },
-  { id: 'ohat', name: 'Open hat', color: '#7FA39A' },
-  { id: 'tom', name: 'Tom', color: '#7D98AE' },
-  { id: 'crash', name: 'Crash', color: '#9C93B5' },
-  { id: 'cow', name: 'Cowbell', color: '#A88FA8' },
+  { id: 'kick', name: 'Kick', color: '#E04B32' },
+  { id: 'snare', name: 'Snare', color: '#F2A93B' },
+  { id: 'clap', name: 'Clap', color: '#D9A0A0' },
+  { id: 'rim', name: 'Rim', color: '#F7D560' },
+  { id: 'hat', name: 'Hat', color: '#8FA37A' },
+  { id: 'ohat', name: 'Open hat', color: '#4F8A8B' },
+  { id: 'tom', name: 'Tom', color: '#3E7CB1' },
+  { id: 'crash', name: 'Crash', color: '#C96F4A' },
+  { id: 'cow', name: 'Cowbell', color: '#8E6BB8' },
 ];
 export function drum(ctx, out, id, time, vel = 0.85, kit = 'studio') {
   const k = KIT_SETS[kit] || KIT_SETS.studio;
